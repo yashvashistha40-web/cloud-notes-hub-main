@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+} from "react";
 
 // ===============================
 // AWS API Gateway Configuration
@@ -10,11 +16,11 @@ const API_BASE_URL =
 // Utility Helpers
 // ===============================
 function getToken(): string | null {
-   // Use Access Token for API requests (validated by API Gateway)
-     // ✅ Only use access token for API Gateway
+  // Use Access Token for API requests (validated by API Gateway)
+  // ✅ Only use access token for API Gateway
   return localStorage.getItem("id_token");
-//   return localStorage.getItem("id_token");
- }
+  //   return localStorage.getItem("id_token");
+}
 
 // Normalize headers for Fetch API
 function normalizeHeaders(h?: HeadersInit): Record<string, string> {
@@ -31,15 +37,15 @@ async function apiFetch(path: string, opts: RequestInit = {}) {
   const headers = normalizeHeaders(opts.headers);
   const token = getToken();
   if (token) {
-  // Remove any unwanted prefix or key=value formatting
-  const cleanToken = token
-    .replace(/^Bearer\s+/i, "")      // remove duplicate "Bearer"
-    .replace(/^access_token=/i, "") // remove accidental key=value format
-    .replace(/^id_token=/i, "")      // remove "id_token=" prefix if present
-    .trim();
+    // Remove any unwanted prefix or key=value formatting
+    const cleanToken = token
+      .replace(/^Bearer\s+/i, "") // remove duplicate "Bearer"
+      .replace(/^access_token=/i, "") // remove accidental key=value format
+      .replace(/^id_token=/i, "") // remove "id_token=" prefix if present
+      .trim();
 
-headers["Authorization"] = cleanToken; // ✅ remove Bearer prefix — matches old JS
-}
+    headers["Authorization"] = cleanToken; // ✅ remove Bearer prefix — matches old JS
+  }
 
   // if (token)
   //   headers["Authorization"] = token.startsWith("Bearer ")
@@ -51,7 +57,9 @@ headers["Authorization"] = cleanToken; // ✅ remove Bearer prefix — matches o
   let bodyPreview: any = opts.body;
   try {
     bodyPreview =
-      typeof opts.body === "string" ? JSON.parse(opts.body as string) : opts.body;
+      typeof opts.body === "string"
+        ? JSON.parse(opts.body as string)
+        : opts.body;
   } catch {}
 
   console.log("[apiFetch] ->", opts.method || "GET", url, bodyPreview);
@@ -101,6 +109,7 @@ interface NotesContextType {
   createNote: () => Promise<Note>;
   updateNote: (id: string, updates: Partial<Note>) => Promise<void>;
   deleteNoteUnified: (id: string, permanent?: boolean) => Promise<void>;
+  deleteNote: (id: string, permanent?: boolean) => Promise<void>; // add alias to match context
   toggleFavorite: (id: string) => Promise<void>;
   restoreNote: (id: string) => void;
   getFilteredNotes: (filter: "all" | "favorites" | "trash") => Note[];
@@ -176,15 +185,23 @@ async function toggleFavoriteInS3(noteId: string): Promise<void> {
 }
 
 // Fetch full note content from S3
-export async function openNote(
-  noteId: string
-): Promise<{ noteId: string; title: string; content: string }> {
+export async function openNote(noteId: string): Promise<{
+  noteId: string;
+  title: string;
+  content: string;
+  attachments?: any[];
+}> {
   const email = localStorage.getItem("email") || "";
   const q = `?email=${encodeURIComponent(email)}&noteId=${encodeURIComponent(
     noteId
   )}`;
   const res: any = await apiFetch(`/getFullNote${q}`);
-  return { noteId, title: res.title ?? "", content: res.content ?? "" };
+  return {
+    noteId,
+    title: res.title ?? "",
+    content: res.content ?? "",
+    attachments: res.attachments || [],
+  };
 }
 
 // ===============================
@@ -253,36 +270,35 @@ export function NotesProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Unified delete (soft or permanent)
-const deleteNoteUnified = useCallback(
-  async (noteId: string) => {
-    const email = localStorage.getItem("email");
+  const deleteNoteUnified = useCallback(
+    async (noteId: string) => {
+      const email = localStorage.getItem("email");
 
-    if (!email) {
-      throw new Error("User email not found in localStorage");
-    }
+      if (!email) {
+        throw new Error("User email not found in localStorage");
+      }
 
-    // 🔹 Call delete Lambda
-    await apiFetch("/deleteNote", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        email,
-        noteId, // ✅ SAME ID as getFullNote
-      }),
-    });
+      // 🔹 Call delete Lambda
+      await apiFetch("/deleteNote", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          noteId, // ✅ SAME ID as getFullNote
+        }),
+      });
 
-    // 🔹 Update UI after backend success
-    setNotes((prev) => prev.filter((n) => n.id !== noteId));
+      // 🔹 Update UI after backend success
+      setNotes((prev) => prev.filter((n) => n.id !== noteId));
 
-    if (selectedNoteId === noteId) {
-      setSelectedNoteId(null);
-    }
-  },
-  [selectedNoteId]
-);
-
+      if (selectedNoteId === noteId) {
+        setSelectedNoteId(null);
+      }
+    },
+    [selectedNoteId]
+  );
 
   // const deleteNoteUnified = useCallback(
   //   async (id: string, permanent = false) => {
@@ -311,9 +327,7 @@ const deleteNoteUnified = useCallback(
   // Toggle favorite
   const toggleFavorite = useCallback(async (id: string) => {
     setNotes((prev) =>
-      prev.map((n) =>
-        n.id === id ? { ...n, isFavorite: !n.isFavorite } : n
-      )
+      prev.map((n) => (n.id === id ? { ...n, isFavorite: !n.isFavorite } : n))
     );
     await toggleFavoriteInS3(id);
   }, []);
@@ -326,8 +340,7 @@ const deleteNoteUnified = useCallback(
   }, []);
 
   // Manage attachments
-  const addAttachment = useCallback(
-  async (noteId: string, files: FileList) => {
+  const addAttachment = useCallback(async (noteId: string, files: FileList) => {
     const email = localStorage.getItem("email");
     if (!email) throw new Error("No email");
 
@@ -374,9 +387,7 @@ const deleteNoteUnified = useCallback(
           : n
       )
     );
-  },
-  []
-);
+  }, []);
 
   // const addAttachment = useCallback((noteId: string, files: FileList) => {
   //   const newAttachments: NoteAttachment[] = Array.from(files).map((file) => ({
@@ -400,19 +411,22 @@ const deleteNoteUnified = useCallback(
   //   );
   // }, []);
 
-  const removeAttachment = useCallback((noteId: string, attachmentId: string) => {
-    setNotes((prev) =>
-      prev.map((n) =>
-        n.id === noteId
-          ? {
-              ...n,
-              attachments: n.attachments.filter((a) => a.id !== attachmentId),
-              updatedAt: new Date(),
-            }
-          : n
-      )
-    );
-  }, []);
+  const removeAttachment = useCallback(
+    (noteId: string, attachmentId: string) => {
+      setNotes((prev) =>
+        prev.map((n) =>
+          n.id === noteId
+            ? {
+                ...n,
+                attachments: n.attachments.filter((a) => a.id !== attachmentId),
+                updatedAt: new Date(),
+              }
+            : n
+        )
+      );
+    },
+    []
+  );
 
   // Filter notes (view)
   const getFilteredNotes = useCallback(
@@ -437,7 +451,13 @@ const deleteNoteUnified = useCallback(
       if (exists) {
         return prev.map((n) =>
           n.id === noteId
-            ? { ...n, title: full.title, content: full.content, updatedAt: new Date() }
+            ? {
+                ...n,
+                title: full.title,
+                content: full.content,
+                attachments: full.attachments || [],
+                updatedAt: new Date(),
+              }
             : n
         );
       }
@@ -449,7 +469,7 @@ const deleteNoteUnified = useCallback(
         updatedAt: new Date(),
         isFavorite: false,
         isDeleted: false,
-        attachments: [],
+        attachments: full.attachments || [],
       };
       return [newNote, ...prev];
     });
@@ -464,7 +484,7 @@ const deleteNoteUnified = useCallback(
         setSelectedNoteId,
         createNote,
         updateNote,
-        deleteNoteUnified,   
+        deleteNoteUnified,
         deleteNote: deleteNoteUnified, // ✅ alias so Sidebar.tsx keeps working
         toggleFavorite,
         restoreNote,
@@ -484,7 +504,6 @@ const deleteNoteUnified = useCallback(
 // ===============================
 export function useNotes() {
   const ctx = useContext(NotesContext);
-  if (!ctx)
-    throw new Error("useNotes must be used within a NotesProvider");
+  if (!ctx) throw new Error("useNotes must be used within a NotesProvider");
   return ctx;
 }
