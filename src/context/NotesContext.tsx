@@ -127,22 +127,43 @@ async function fetchNotesFromS3(email?: string): Promise<any[]> {
 // Save or update a note (writes to S3 + DynamoDB)
 async function saveNoteToS3(note: Note): Promise<void> {
   const email = localStorage.getItem("email") || "testuser@example.com";
-  const body = {
-    email,
-    noteId: note.id.startsWith("note-") ? note.id : `note-${note.id}`,
-    title: note.title,
-    note: note.content || "",
-    attachments: note.attachments || [],
-  };
-
-  console.log("saveNoteToS3 body:", body);
 
   await apiFetch(`/createNote`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      email,
+      noteId: note.id,
+      title: note.title,
+      note: note.content || "",
+      attachments: note.attachments.map((a) => ({
+        fileName: a.name,
+        size: a.size,
+        contentType: a.type,
+        s3Key: a.id,
+      })),
+    }),
   });
 }
+
+// async function saveNoteToS3(note: Note): Promise<void> {
+//   const email = localStorage.getItem("email") || "testuser@example.com";
+//   const body = {
+//     email,
+//     noteId: note.id.startsWith("note-") ? note.id : `note-${note.id}`,
+//     title: note.title,
+//     note: note.content || "",
+//     attachments: note.attachments || [],
+//   };
+
+//   console.log("saveNoteToS3 body:", body);
+
+//   await apiFetch(`/createNote`, {
+//     method: "POST",
+//     headers: { "Content-Type": "application/json" },
+//     body: JSON.stringify(body),
+//   });
+// }
 
 // Toggle favorite flag
 async function toggleFavoriteInS3(noteId: string): Promise<void> {
@@ -305,27 +326,79 @@ const deleteNoteUnified = useCallback(
   }, []);
 
   // Manage attachments
-  const addAttachment = useCallback((noteId: string, files: FileList) => {
-    const newAttachments: NoteAttachment[] = Array.from(files).map((file) => ({
-      id: `${Date.now()}-${file.name}`,
-      name: file.name,
-      type: file.type,
-      size: file.size,
-      url: URL.createObjectURL(file),
-    }));
+  const addAttachment = useCallback(
+  async (noteId: string, files: FileList) => {
+    const email = localStorage.getItem("email");
+    if (!email) throw new Error("No email");
+
+    const uploaded: NoteAttachment[] = [];
+
+    for (const file of Array.from(files)) {
+      // 1️⃣ Ask SAME Lambda for presigned URL
+      const presign = await apiFetch("/createNote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "presign",
+          email,
+          noteId,
+          fileName: file.name,
+          contentType: file.type,
+        }),
+      });
+
+      // 2️⃣ Upload directly to S3
+      await fetch(presign.uploadUrl, {
+        method: "PUT",
+        body: file,
+      });
+
+      // 3️⃣ Save attachment metadata
+      uploaded.push({
+        id: presign.s3Key,
+        name: presign.fileName,
+        type: file.type,
+        size: file.size,
+        url: presign.s3Key,
+      });
+    }
 
     setNotes((prev) =>
       prev.map((n) =>
         n.id === noteId
           ? {
               ...n,
-              attachments: [...n.attachments, ...newAttachments],
+              attachments: [...n.attachments, ...uploaded],
               updatedAt: new Date(),
             }
           : n
       )
     );
-  }, []);
+  },
+  []
+);
+
+  // const addAttachment = useCallback((noteId: string, files: FileList) => {
+  //   const newAttachments: NoteAttachment[] = Array.from(files).map((file) => ({
+  //     id: `${Date.now()}-${file.name}`,
+  //     name: file.name,
+  //     type: file.type,
+  //     size: file.size,
+  //     url: URL.createObjectURL(file),
+  //   }));
+
+  //   setNotes((prev) =>
+  //     prev.map((n) =>
+  //       n.id === noteId
+  //         ? {
+  //             ...n,
+  //             attachments: [...n.attachments, ...newAttachments],
+  //             updatedAt: new Date(),
+  //           }
+  //         : n
+  //     )
+  //   );
+  // }, []);
 
   const removeAttachment = useCallback((noteId: string, attachmentId: string) => {
     setNotes((prev) =>
