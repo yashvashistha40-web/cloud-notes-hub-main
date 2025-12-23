@@ -175,14 +175,26 @@ async function saveNoteToS3(note: Note): Promise<void> {
 // }
 
 // Toggle favorite flag
-async function toggleFavoriteInS3(noteId: string): Promise<void> {
+async function toggleFavoriteInS3(noteId: string): Promise<boolean> {
   const email = localStorage.getItem("email") || "testuser@example.com";
-  await apiFetch(`/updateNote`, {
+
+  const res = await apiFetch(`/updateNote`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, noteId, action: "favorite_toggle" }),
+    body: JSON.stringify({ email, noteId }),
   });
+
+  return res.favorite;
 }
+
+// async function toggleFavoriteInS3(noteId: string): Promise<void> {
+//   const email = localStorage.getItem("email") || "testuser@example.com";
+//   await apiFetch(`/updateNote`, {
+//     method: "POST",
+//     headers: { "Content-Type": "application/json" },
+//     body: JSON.stringify({ email, noteId }),
+//   });
+// }
 
 // Fetch full note content from S3
 export async function openNote(noteId: string): Promise<{
@@ -326,11 +338,30 @@ export function NotesProvider({ children }: { children: React.ReactNode }) {
 
   // Toggle favorite
   const toggleFavorite = useCallback(async (id: string) => {
-    setNotes((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, isFavorite: !n.isFavorite } : n))
-    );
-    await toggleFavoriteInS3(id);
-  }, []);
+  // 1️⃣ Optimistic UI update
+  setNotes((prev) =>
+    prev.map((n) =>
+      n.id === id ? { ...n, isFavorite: !n.isFavorite } : n
+    )
+  );
+
+  // 2️⃣ Persist change in backend
+  const favorite = await toggleFavoriteInS3(id);
+
+  // 3️⃣ Sync UI with backend truth
+  setNotes((prev) =>
+    prev.map((n) =>
+      n.id === id ? { ...n, isFavorite: favorite } : n
+    )
+  );
+}, []);
+
+  // const toggleFavorite = useCallback(async (id: string) => {
+  //   setNotes((prev) =>
+  //     prev.map((n) => (n.id === id ? { ...n, isFavorite: !n.isFavorite } : n))
+  //   );
+  //   await toggleFavoriteInS3(id);
+  // }, []);
 
   // Restore from trash
   const restoreNote = useCallback((id: string) => {

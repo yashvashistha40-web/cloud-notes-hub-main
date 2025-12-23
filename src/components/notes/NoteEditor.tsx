@@ -13,19 +13,25 @@ export default function NoteEditor() {
 
   const selectedNote = notes.find((n) => n.id === selectedNoteId);
 
+  /* =====================================================
+     ✅ ONLY UPDATED PART (CURSOR FIX)
+     ===================================================== */
   useEffect(() => {
-    if (selectedNote) {
-      setTitle(selectedNote.title);
-      if (editorRef.current) {
-        editorRef.current.innerHTML = selectedNote.content;
-      }
-    } else {
+    if (!editorRef.current) return;
+
+    if (!selectedNote) {
       setTitle('');
-      if (editorRef.current) {
-        editorRef.current.innerHTML = '';
-      }
+      editorRef.current.innerHTML = '';
+      return;
     }
-  }, [selectedNote]);
+
+    // ✅ Update editor ONLY when switching notes
+    setTitle(selectedNote.title);
+
+    if (editorRef.current.innerHTML !== selectedNote.content) {
+      editorRef.current.innerHTML = selectedNote.content;
+    }
+  }, [selectedNoteId]); // ✅ IMPORTANT: depend ONLY on selectedNoteId
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const debouncedUpdate = useCallback(
@@ -100,13 +106,6 @@ export default function NoteEditor() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={handleAISuggest}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-primary to-purple-500 text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
-          >
-            <Sparkles className="w-4 h-4" />
-            AI Suggest
-          </button>
-          <button
             onClick={handleSave}
             className="inline-flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-lg text-sm font-medium hover:bg-secondary/80 transition-colors"
           >
@@ -139,9 +138,9 @@ export default function NoteEditor() {
       </div>
 
       {/* File Attachments */}
-      <FileAttachments 
-        attachments={selectedNote.attachments} 
-        onRemove={handleRemoveAttachment} 
+      <FileAttachments
+        attachments={selectedNote.attachments}
+        onRemove={handleRemoveAttachment}
       />
     </div>
   );
