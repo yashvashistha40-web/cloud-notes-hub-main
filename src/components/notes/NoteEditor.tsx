@@ -13,9 +13,9 @@ export default function NoteEditor() {
 
   const selectedNote = notes.find((n) => n.id === selectedNoteId);
 
-  /* =====================================================
-     ✅ ONLY UPDATED PART (CURSOR FIX)
-     ===================================================== */
+  /* ===============================
+     CURSOR FIX (UNCHANGED)
+     =============================== */
   useEffect(() => {
     if (!editorRef.current) return;
 
@@ -25,15 +25,13 @@ export default function NoteEditor() {
       return;
     }
 
-    // ✅ Update editor ONLY when switching notes
     setTitle(selectedNote.title);
 
     if (editorRef.current.innerHTML !== selectedNote.content) {
       editorRef.current.innerHTML = selectedNote.content;
     }
-  }, [selectedNoteId]); // ✅ IMPORTANT: depend ONLY on selectedNoteId
+  }, [selectedNoteId]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const debouncedUpdate = useCallback(
     debounce((id: string, updates: { title?: string; content?: string }) => {
       updateNote(id, updates);
@@ -51,23 +49,117 @@ export default function NoteEditor() {
 
   const handleContentChange = () => {
     if (selectedNoteId && editorRef.current) {
-      const newContent = editorRef.current.innerHTML;
-      debouncedUpdate(selectedNoteId, { content: newContent });
+      debouncedUpdate(selectedNoteId, {
+        content: editorRef.current.innerHTML,
+      });
     }
   };
 
   const handleSave = () => {
     if (selectedNoteId && editorRef.current) {
-      updateNote(selectedNoteId, { title, content: editorRef.current.innerHTML });
+      updateNote(selectedNoteId, {
+        title,
+        content: editorRef.current.innerHTML,
+      });
       toast.success('Note saved');
     }
   };
 
-  const handleAISuggest = () => {
-    toast.info('AI suggestions coming soon!', {
-      description: 'This feature will be powered by AWS Lambda.',
-    });
-  };
+  /* ===============================
+     ✅ UPDATED AI SUGGESTION CODE
+     =============================== */
+     const handleAISuggest = async () => {
+  if (!editorRef.current) return;
+
+  const text = editorRef.current.innerText.trim();
+  if (!text) {
+    toast.error('Nothing to improve');
+    return;
+  }
+
+  try {
+    toast.loading('AI is improving your note...', { id: 'ai' });
+
+    const res = await fetch(
+      'https://fkd2b5br2b.execute-api.ap-south-1.amazonaws.com/ps/notes/aiHelper',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      }
+    );
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || 'AI failed');
+    }
+
+    // ✅ SAFE RESPONSE HANDLING
+    let suggestionText = '';
+
+    if (typeof data.suggestion === 'string') {
+      suggestionText = data.suggestion;
+    } else if (Array.isArray(data.suggestions)) {
+      suggestionText = data.suggestions.join(' ');
+    }
+
+    if (!suggestionText.trim()) {
+      throw new Error('AI returned empty response');
+    }
+
+    editorRef.current.innerText = suggestionText;
+
+    if (selectedNoteId) {
+      updateNote(selectedNoteId, {
+        content: editorRef.current.innerHTML,
+      });
+    }
+
+    toast.success('AI suggestion applied', { id: 'ai' });
+  } catch (err: any) {
+    toast.error(err.message || 'AI error', { id: 'ai' });
+  }
+};
+
+  // const handleAISuggest = async () => {
+  //   if (!editorRef.current) return;
+
+  //   const text = editorRef.current.innerText.trim();
+  //   if (!text) {
+  //     toast.error('Nothing to improve');
+  //     return;
+  //   }
+
+  //   try {
+  //     toast.loading('AI is improving your note...', { id: 'ai' });
+
+  //     const res = await fetch(
+  //       'https://fkd2b5br2b.execute-api.ap-south-1.amazonaws.com/ps/notes/aiHelper',
+  //       {
+  //         method: 'POST',
+  //         headers: { 'Content-Type': 'application/json' },
+  //         body: JSON.stringify({ text, mode: 'improve' }),
+  //       }
+  //     );
+
+  //     const data = await res.json();
+
+  //     if (!res.ok) throw new Error(data.error || 'AI failed');
+
+  //     editorRef.current.innerText = data.suggestion;
+
+  //     if (selectedNoteId) {
+  //       updateNote(selectedNoteId, {
+  //         content: editorRef.current.innerHTML,
+  //       });
+  //     }
+
+  //     toast.success('AI suggestion applied', { id: 'ai' });
+  //   } catch (err: any) {
+  //     toast.error(err.message || 'AI error', { id: 'ai' });
+  //   }
+  // };
 
   const handleFileAttach = (files: FileList) => {
     if (selectedNoteId) {
@@ -90,24 +182,28 @@ export default function NoteEditor() {
           <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-muted flex items-center justify-center">
             <FileText className="w-10 h-10 text-muted-foreground" />
           </div>
-          <h3 className="text-xl font-semibold text-foreground mb-2">No note selected</h3>
-          <p className="text-muted-foreground">Select a note from the list or create a new one</p>
+          <h3 className="text-xl font-semibold mb-2">No note selected</h3>
+          <p className="text-muted-foreground">Select or create a note</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 bg-background h-screen flex flex-col">
-      {/* Top Toolbar */}
-      <div className="p-4 border-b border-border flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>Auto-save enabled</span>
-        </div>
-        <div className="flex items-center gap-2">
+    <div className="flex-1 h-screen flex flex-col">
+      <div className="p-4 border-b flex justify-between">
+        <span className="text-sm text-muted-foreground">Auto-save enabled</span>
+        <div className="flex gap-2">
+          <button
+            onClick={handleAISuggest}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-primary to-purple-500 text-white rounded-lg"
+          >
+            <Sparkles className="w-4 h-4" />
+            AI Suggest
+          </button>
           <button
             onClick={handleSave}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-lg text-sm font-medium hover:bg-secondary/80 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-secondary rounded-lg"
           >
             <Save className="w-4 h-4" />
             Save
@@ -115,29 +211,24 @@ export default function NoteEditor() {
         </div>
       </div>
 
-      {/* Formatting Toolbar */}
       <EditorToolbar onFileAttach={handleFileAttach} />
 
-      {/* Editor */}
-      <div className="flex-1 p-6 overflow-y-auto flex flex-col">
+      <div className="flex-1 p-6 overflow-y-auto">
         <input
-          type="text"
           value={title}
           onChange={handleTitleChange}
           placeholder="Note title..."
-          className="w-full text-3xl font-bold text-foreground bg-transparent border-none outline-none placeholder:text-muted-foreground/50 mb-6"
+          className="w-full text-3xl font-bold mb-6 bg-transparent outline-none"
         />
         <div
           ref={editorRef}
           contentEditable
           onInput={handleContentChange}
-          className="flex-1 min-h-[300px] text-foreground bg-transparent border border-border rounded-lg p-4 outline-none focus:border-primary/50 transition-colors leading-relaxed overflow-y-auto"
+          className="min-h-[300px] border rounded-lg p-4"
           style={{ whiteSpace: 'pre-wrap' }}
-          data-placeholder="Start writing your note..."
         />
       </div>
 
-      {/* File Attachments */}
       <FileAttachments
         attachments={selectedNote.attachments}
         onRemove={handleRemoveAttachment}
