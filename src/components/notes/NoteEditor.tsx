@@ -199,7 +199,7 @@ export default function NoteEditor() {
             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-primary to-purple-500 text-white rounded-lg"
           >
             <Sparkles className="w-4 h-4" />
-            AI Suggest
+            AI Note Summarizer 
           </button>
           <button
             onClick={handleSave}
